@@ -1,0 +1,21 @@
+{
+  "name": "beancount-parser",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "antlr4": "antlr4 -Dlanguage=TypeScript -visitor -o src/parser src/grammar/Beancount.g4",
+    "build": "bun run antlr4 && tsc",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "antlr4": "^4.13.1",
+    "antlr4ts-cli": "^0.5.0-alpha.4"
+  },
+  "dependencies": {
+    "antlr4ts": "^0.5.0-alpha.4"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
