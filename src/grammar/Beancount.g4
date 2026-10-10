@@ -49,8 +49,10 @@ eol
 
 // Transaction: header line, then indented metadata / tag-link lines, then
 // postings. Metadata lines directly under a posting belong to that posting.
+// Tag/link lines after the first posting are rejected (upstream rejects them
+// in its builder: "Tags or links not allowed after first Posting").
 transaction
-    : DATE txn_flag txn_strings? tags_links eol (key_value_line | tags_links_line)* (posting | tags_links_line)*
+    : DATE txn_flag txn_strings? tags_links eol (key_value_line | tags_links_line)* posting*
     ;
 
 txn_flag
@@ -253,19 +255,23 @@ account
 // Lexer rules
 // ---------------------------------------------------------------------------
 // Order matters for equal-length matches: earlier rules win.
+//
+// Column-0 checks use `currentTokenColumn` and sit after the first char:
+// a predicate at the left edge of a rule stops ANTLR from caching the DFA
+// start state, which made lexing ~10x slower.
 
 EOL: '\r'? '\n';
 
 // Leading whitespace at column 0 followed by content. Whitespace-only lines
 // fall through to WS so they read as plain blank lines.
-INDENT: {this.column === 0}? [ \t]+ {this.isFollowedByContent()}?;
+INDENT: [ \t]+ {this.currentTokenColumn === 0 && this.isFollowedByContent()}?;
 
 // An indented comment line vanishes entirely (newline included) so it can
 // sit between postings or metadata without ending the directive.
-INDENTED_COMMENT_LINE: {this.column === 0}? [ \t]+ ';' ~[\r\n]* ('\r'? '\n')? -> skip;
+INDENTED_COMMENT_LINE: [ \t]+ {this.currentTokenColumn === 0}? ';' ~[\r\n]* ('\r'? '\n')? -> skip;
 
 // Org-mode headings/drawers and flag-prefixed lines at column 0 are ignored.
-IGNORED_LINE: {this.column === 0}? [*:#!&?%] ~[\r\n]* -> skip;
+IGNORED_LINE: [*:#!&?%] {this.currentTokenColumn === 0}? ~[\r\n]* -> skip;
 
 WS: [ \t\r]+ -> skip;
 COMMENT: ';' ~[\r\n]* -> skip;

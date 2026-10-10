@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { ParserRuleContext } from "antlr4ng";
+import { BeancountParser as P } from "../src/parser/BeancountParser";
 import { parseRaw } from "./antlr";
 
 // Grammar + lexer behaviour, checked on the raw ANTLR tree (no visitor).
@@ -56,6 +58,9 @@ describe("grammar rejects invalid syntax", () => {
     ["blank line inside a transaction", '2022-01-15 * "x"\n  Assets:A 1 USD\n\n  Assets:B\n'],
     ["unindented posting", '2022-01-15 * "x"\nAssets:A 1 USD\n'],
     ["two directives on one line", "2022-01-01 close Assets:A 2022-01-01 close Assets:B\n"],
+    ["mismatched cost braces {..}}", '2022-01-15 * "x"\n  Assets:A 1 X {1 USD}}\n'],
+    ["mismatched cost braces {{..}", '2022-01-15 * "x"\n  Assets:A 1 X {{1 USD}\n'],
+    ["tag/link line after the first posting", '2022-01-15 * "x"\n  Assets:A 1 USD\n  #late\n'],
   ])("%s", (_name, input) => {
     expect(parseRaw(input).errors).not.toEqual([]);
   });
@@ -93,11 +98,11 @@ describe("parse tree shape", () => {
     ].join("\n");
     const { errors, tree } = parseRaw(ledger);
     expect(errors).toEqual([]);
-    expect(tree.directive().map((d) => d.getChild(0)?.constructor.name)).toEqual([
-      "OptionsContext", "OptionsContext", "PluginContext",
-      "OpenContext", "OpenContext", "Commodity_directiveContext",
-      "PushtagContext", "TransactionContext", "TransactionContext", "PoptagContext",
-      "BalanceContext", "PriceContext", "CustomContext",
+    expect(tree.directive().map((d) => (d.getChild(0) as ParserRuleContext | null)?.ruleIndex)).toEqual([
+      P.RULE_options, P.RULE_options, P.RULE_plugin,
+      P.RULE_open, P.RULE_open, P.RULE_commodity_directive,
+      P.RULE_pushtag, P.RULE_transaction, P.RULE_transaction, P.RULE_poptag,
+      P.RULE_balance, P.RULE_price, P.RULE_custom,
     ]);
     expect(tree.directive(7)?.transaction()?.posting().length).toBe(2);
     expect(tree.directive(8)?.transaction()?.posting(0)?.metadata().key_value_line().length).toBe(1);
@@ -142,7 +147,11 @@ describe("parse tree shape", () => {
   test("cost and price annotations distinguish per-unit from total", () => {
     const txn = onlyTransaction('2022-01-15 * "x"\n  Assets:A 1 X {1 USD} @ 2 USD\n  Assets:B 1 X {{1 USD}} @@ 2 USD\n');
     const [perUnit, total] = txn.posting();
-    expect([perUnit?.cost()?.LCURL(), perUnit?.price_annotation()?.AT()]).not.toContain(null);
-    expect([total?.cost()?.LCURLCURL(), total?.price_annotation()?.ATAT()]).not.toContain(null);
+    expect(perUnit?.cost()?.LCURL()).toBeTruthy();
+    expect(perUnit?.price_annotation()?.AT()).toBeTruthy();
+    expect([perUnit?.cost()?.LCURLCURL(), perUnit?.price_annotation()?.ATAT()]).toEqual([null, null]);
+    expect(total?.cost()?.LCURLCURL()).toBeTruthy();
+    expect(total?.price_annotation()?.ATAT()).toBeTruthy();
+    expect([total?.cost()?.LCURL(), total?.price_annotation()?.AT()]).toEqual([null, null]);
   });
 });
